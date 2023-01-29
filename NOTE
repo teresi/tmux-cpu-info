@@ -1,0 +1,11 @@
+# NOTE
+- Using Git LFS may have caused Tmux Plugin Manager to be unable to download this repo
+  so the screenshots are not tracked in Git LFS unfortunately
+
+# TODO
+- [ ] add argparse to bars.py
+    - [ ] handle input for cpu_percent period
+
+# FUTURE
+- [ ] add colors (maybe) like jdxcode did: https://github.com/jdxcode/tmux-cpu-info/
+- [ ] add a very small space between bars to show usage per cpu (HairSpace was too big)

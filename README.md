@@ -13,8 +13,20 @@ Edit your `~/.tmux.conf`:
 set -g @plugin 'teresi/tmux-cpu-info'
 
 # add the chart to your status, e.g.:
-set-option -ag status-right "#($TMUX_PLUGIN_MANAGER_PATH/tmux-cpu-info/bars.py)"
+set-option -ag status-right '#($TMUX_PLUGIN_MANAGER_PATH/tmux-cpu-info/bars.py)'
 ```
+
+## Example
+
+![bars_sample.jpeg](screenshots/bars_sample.jpeg)
+
+
+## Dependencies
+
+Requires Tmux Plugin Manager, Python3, and the `psutil` module.
+
+Tested on Linux.
+
 
 ## Other Plugins
 
