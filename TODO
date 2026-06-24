@@ -1,0 +1,28 @@
+# RUST REWRITE
+
+The python code is good and simple, but I'm interested in reducing the need for Python and etc.
+
+
+## DESIGN
+
+Use a client/server so the TMUX plugin can get the latest state without delay,
+    and the server can run in the background.
+
+Use shared memory and daemonize the server so the client can get the values immediately,
+    and other clients can reuse the server.
+
+A good candiate for the daemon would be systemd but I don't always have systemd installed,
+    so I'm opting for a little more manual control.
+
+
+## TODO
+
+[x] add initial shared memory
+[x] add initial client / server
+[x] add read/write times
+[ ] add CPU usage
+[ ] add refresh rate (minimum is 5hz)
+[ ] add start server from client using Daemonize
+        add pid lock file or similar to check for existing daemon
+[ ] add server exit after no clients are running
+[ ] add tmux plugin setup to compile/install
