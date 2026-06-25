@@ -1,3 +1,4 @@
+use std::cmp;
 use std::fs::OpenOptions;
 use std::sync::atomic::Ordering;
 use std::thread;
@@ -11,6 +12,8 @@ use shared_memory::{Shmem, ShmemConf};
 use crate::error::CpuBarError;
 use crate::server::{Buffer, SHMEM_ID, Server};
 use crate::utils::now_realtime;
+
+pub const BARS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
 /// Read the CPU usage from the server
 ///
@@ -61,13 +64,33 @@ impl Client {
         Ok(client)
     }
 
+    pub fn usage_to_bars(usage: impl IntoIterator<Item = u8>) -> String {
+        // MAGIC: [0..100) to indices for BARS [0..8]
+        let usage: String = usage
+            .into_iter()
+            .map(|u| cmp::min(u, 99) as usize)
+            .map(|u| u * BARS.len() / 100)
+            .map(|u| BARS[u])
+            .collect();
+        usage
+    }
+
     pub fn read(&self) {
         let braw = self.shm.as_ptr() as *const Buffer;
+        let mut usage: Vec<u8> = vec![];
         unsafe {
             let n_cpus = (*braw).core_count.load(Ordering::Acquire);
             let time_w = (*braw).last_write.load(Ordering::Acquire);
-            log::info!("cpu count {}, written {}", n_cpus, time_w);
+            let cores = (*braw).cpu_usage.as_slice();
+            usage = cores[0..n_cpus]
+                .iter()
+                .map(|c| c.load(Ordering::Acquire))
+                .collect();
+
+            let bars = Self::usage_to_bars(usage);
+            log::info!("written {}, bars {}", time_w, bars);
         }
+
         self.load_read().expect("couldn't write from client");
     }
 

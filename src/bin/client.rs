@@ -11,7 +11,7 @@ fn main() {
         let client = Client::connect().expect("couldn't start and connect");
         loop {
             client.read();
-            thread::sleep(Duration::from_secs(1));
+            thread::sleep(Duration::from_millis(500));
         }
     });
 

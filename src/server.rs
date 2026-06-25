@@ -84,8 +84,20 @@ impl Server {
 
     pub fn refresh(&mut self) {
         self.sys_info.refresh_cpu_all();
-        let usage: Vec<f32> = self.sys_info.cpus().iter().map(|c| c.cpu_usage()).collect();
-        log::info!("cpus: {:?}", usage);
+        let usage: Vec<u8> = self
+            .sys_info
+            .cpus()
+            .iter()
+            .map(|c| c.cpu_usage() as u8)
+            .collect();
+
+        log::info!("  usage {:?}", usage);
+        let braw = self.shm.as_ptr() as *mut Buffer;
+        unsafe {
+            for (src, dst) in usage.iter().zip((*braw).cpu_usage.iter()) {
+                dst.store(*src, Ordering::Release);
+            }
+        }
     }
 
     pub fn store_time_written(&mut self) -> Result<(), CpuBarError> {
@@ -127,6 +139,7 @@ impl Server {
             if werr.is_err() {
                 log::error!("couldn't write {:?}", werr);
             }
+
             self.read();
 
             std::thread::sleep(self.period);
