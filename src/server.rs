@@ -1,17 +1,29 @@
+//use std::fs::File;
+use log::LevelFilter;
 use std::mem::size_of;
 use std::sync::atomic::{AtomicU8, AtomicU64, AtomicUsize, Ordering};
 use std::time::Duration;
 
 //use sysinfo::MINIMUM_CPU_UPDATE_INTERVAL;
-use fork::{Fork, daemon};
+use daemonize::Daemonize;
 use shared_memory::{Shmem, ShmemConf};
 use sysinfo::{CpuRefreshKind, RefreshKind, System};
+
+use log4rs::append::rolling_file::RollingFileAppender;
+use log4rs::append::rolling_file::policy::compound::CompoundPolicy;
+use log4rs::append::rolling_file::policy::compound::roll::fixed_window::FixedWindowRoller;
+use log4rs::append::rolling_file::policy::compound::trigger::size::SizeTrigger;
+use log4rs::config::{Appender, Config, Root};
+use log4rs::encode::pattern::PatternEncoder;
 
 use crate::error::CpuBarError;
 use crate::utils::now_realtime;
 
-// TODO: if using flink should use an absolute path, e.g. /tmp/shmem...
-pub const SHMEM_ID: &str = "CPU_BAR_SHEM_ID_TOO";
+pub const DAEMON_SHM: &str = "/tmp/cpubars.shm";
+pub const DAEMON_PID: &str = "/tmp/cpubars.pid";
+pub const DAEMON_LOG: &str = "/tmp/cpubars.log";
+pub const DAEMON_ARC: &str = "/tmp/cpubars.{}.log";
+pub const LOG_KB: u64 = 8 * 1024; // MAGIC: 8KB for testing
 
 #[repr(C)]
 pub struct Buffer {
@@ -32,12 +44,48 @@ pub struct Server {
 }
 
 impl Server {
+    pub fn init_logger() -> Result<(), CpuBarError> {
+        let trigger = SizeTrigger::new(LOG_KB);
+
+        let roller = FixedWindowRoller::builder()
+            .build(DAEMON_ARC, 1)
+            .expect("couldn't create window roller");
+
+        let policy = CompoundPolicy::new(Box::new(trigger), Box::new(roller));
+        let file_appender = RollingFileAppender::builder()
+            .encoder(Box::new(PatternEncoder::new("{d} [{t}] {l} - {m}{n}")))
+            .build(DAEMON_LOG, Box::new(policy))
+            .expect("couldn't create rolling appender");
+        let config = Config::builder()
+            .appender(Appender::builder().build("my_file_logger", Box::new(file_appender)))
+            .build(
+                Root::builder()
+                    .appender("my_file_logger")
+                    .build(LevelFilter::Info),
+            )
+            .expect("couldn't configure appender");
+
+        // 6. Initialize the global logger
+        log4rs::init_config(config).expect("couldn't init log");
+
+        Ok(())
+    }
+
     pub fn start() -> Result<(), CpuBarError> {
+        Self::init_logger().unwrap();
         log::info!("starting server");
-        if let Ok(Fork::Child) = daemon(false, false) {
-            let mut server = Self::new().unwrap();
-            server.run();
+
+        let daemonize = Daemonize::new()
+            .pid_file(DAEMON_PID) // File to store the process ID
+            .chown_pid_file(true); // Update PID file ownership
+
+        match daemonize.start() {
+            Ok(_) => {
+                Server::new().expect("couldn't create server").run();
+            }
+            Err(e) => eprintln!("Error, failed to daemonize: {}", e),
         }
+
         log::info!("starting server... DONE");
         Ok(())
     }
@@ -45,7 +93,7 @@ impl Server {
     pub fn new() -> Result<Self, CpuBarError> {
         let shm_res = ShmemConf::new()
             .size(size_of::<Buffer>())
-            .flink(SHMEM_ID)
+            .flink(DAEMON_SHM)
             .create()
             .map_err(|err| {
                 let msg = format!("couldn't create shmem {:?}", err);
@@ -58,7 +106,7 @@ impl Server {
                 log::warn!("shmem file exists, overwriting it!");
                 ShmemConf::new()
                     .size(size_of::<Buffer>())
-                    .flink(SHMEM_ID)
+                    .flink(DAEMON_SHM)
                     .force_create_flink()
                     .open()
                     .expect("couldn't open existing")

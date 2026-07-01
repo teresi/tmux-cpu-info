@@ -5,9 +5,11 @@ edition = "2024"
 
 [dependencies]
 ctrlc = "3.5.2"
+daemonize = "0.5.0"
 env_logger = "0.11.10"
 fork = "0.8.0"
 log = "0.4.32"
+log4rs = { version = "1.4.0", features = ["size_trigger", "yaml_format"] }
 num_cpus = "1.17.0"
 rustix = { version = "1.1.4", features = ["fs"] }
 shared_memory = "0.12.4"

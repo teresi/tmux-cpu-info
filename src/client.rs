@@ -10,9 +10,10 @@ use rustix::fs::{FlockOperation, flock};
 use shared_memory::{Shmem, ShmemConf};
 
 use crate::error::CpuBarError;
-use crate::server::{Buffer, SHMEM_ID, Server};
+use crate::server::{Buffer, DAEMON_SHM, Server};
 use crate::utils::now_realtime;
 
+// NOTE: 1/8 is U+2581, .., 8/8 U+2588
 pub const BARS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇', '█'];
 
 /// Read the CPU usage from the server
@@ -22,17 +23,20 @@ pub const BARS: [char; 9] = [' ', '▁', '▂', '▃', '▄', '▅', '▆', '▇
 /// * `shm`: shared memory handle
 pub struct Client {
     pub shm: Shmem,
+    pub bars: String,
 }
 
 impl Client {
     // Connect to an existing server
     pub fn connect() -> Result<Self, CpuBarError> {
-        let shm = ShmemConf::new().flink(SHMEM_ID).open().map_err(|err| {
+        let shm = ShmemConf::new().flink(DAEMON_SHM).open().map_err(|err| {
             let msg = format!("couldn't open shmem {:?}", err);
             CpuBarError::FileNotFound(msg)
         })?;
 
-        let client = Self { shm };
+        let nlogical = num_cpus::get();
+        let bars = "?".repeat(nlogical);
+        let client = Self { shm, bars };
         Ok(client)
     }
 
@@ -43,7 +47,7 @@ impl Client {
         let lock = OpenOptions::new()
             .create(true)
             .write(true)
-            .open(format!("/tmp/{}.lock", SHMEM_ID))
+            .open(format!("/tmp/{}.lock", DAEMON_SHM))
             .map_err(|_err| CpuBarError::ClientBusy)?;
 
         if flock(lock, FlockOperation::NonBlockingLockExclusive).is_err() {
@@ -75,23 +79,21 @@ impl Client {
         usage
     }
 
-    pub fn read(&self) {
+    pub fn read(&self) -> String {
         let braw = self.shm.as_ptr() as *const Buffer;
         let mut usage: Vec<u8> = vec![];
-        unsafe {
+        let bars = unsafe {
             let n_cpus = (*braw).core_count.load(Ordering::Acquire);
-            let time_w = (*braw).last_write.load(Ordering::Acquire);
+            let _time_w = (*braw).last_write.load(Ordering::Acquire);
             let cores = (*braw).cpu_usage.as_slice();
             usage = cores[0..n_cpus]
                 .iter()
                 .map(|c| c.load(Ordering::Acquire))
                 .collect();
-
-            let bars = Self::usage_to_bars(usage);
-            log::info!("written {}, bars {}", time_w, bars);
-        }
-
+            Self::usage_to_bars(usage)
+        };
         self.load_read().expect("couldn't write from client");
+        bars
     }
 
     pub fn load_read(&self) -> Result<(), CpuBarError> {

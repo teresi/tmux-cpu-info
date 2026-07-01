@@ -22,7 +22,7 @@ fn main() {
         }
     });
 
-    consumer.join();
+    consumer.join().unwrap();
     log::info!("client joined");
     //producer.join();
     //log::info!("server joined");
